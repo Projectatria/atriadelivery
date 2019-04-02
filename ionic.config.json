@@ -1,0 +1,7 @@
+{
+  "name": "atriadelivery",
+  "integrations": {
+    "cordova": {}
+  },
+  "type": "ionic-angular"
+}
