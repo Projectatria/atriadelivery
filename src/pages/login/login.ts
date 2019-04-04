@@ -1,0 +1,265 @@
+import { Component, ElementRef, ViewChild } from '@angular/core';
+import { AlertController, App, IonicPage, NavController, LoadingController, NavParams } from 'ionic-angular';
+import { ApiProvider } from '../../providers/api/api';
+import { FormGroup, FormBuilder, Validators } from '@angular/forms';
+import { Storage } from '@ionic/storage';
+import { HttpClient, HttpHeaders } from "@angular/common/http";
+import { Http, Headers, RequestOptions } from '@angular/http';
+import { BackgroundMode } from '@ionic-native/background-mode';
+import { Insomnia } from '@ionic-native/insomnia';
+import moment from 'moment';
+import {
+  GoogleMaps,
+  GoogleMap,
+  GoogleMapsEvent,
+  GoogleMapOptions,
+  CameraPosition,
+  MarkerOptions,
+  Marker,
+  LocationService,
+  MyLocationOptions,
+  MyLocation,
+  GoogleMapsAnimation,
+  Polyline,
+  LatLng,
+  Geocoder,
+  GeocoderResult
+} from '@ionic-native/google-maps';
+
+@IonicPage()
+@Component({
+  selector: 'page-login',
+  templateUrl: 'login.html',
+})
+export class LoginPage {
+  myForm: FormGroup;
+  public loading: any;
+  public truck: any;
+  public notruck: any;
+  public idtruck: any;
+  public token: any;
+  public pengiriman = [];
+  public interval: any;
+
+  constructor(
+    public navCtrl: NavController,
+    public alertCtrl: AlertController,
+    public app: App,
+    public loadingCtrl: LoadingController,
+    public fb: FormBuilder,
+    public navParams: NavParams,
+    public storage: Storage,
+    public api: ApiProvider,
+    public backgroundMode: BackgroundMode,
+    private insomnia: Insomnia) {
+    this.insomnia.keepAwake()
+      .then(
+        () => console.log('success'),
+        () => console.log('error')
+      );
+    this.backgroundMode.enable();
+    this.backgroundMode.on("activate").subscribe(() => {
+      console.log('background mode')
+      this.truck = this.navParams.get('truck')
+      setInterval(() => {
+        this.storage.get('idtruck').then((val) => {
+          this.idtruck = val;
+        });
+        this.storage.get('notruck').then((val) => {
+          this.notruck = val;
+          this.truck = this.notruck
+        });
+      }, 1000);
+      if (navigator.geolocation) {
+        this.interval = navigator.geolocation.watchPosition((position) => {
+          let idtruck = this.idtruck
+          let lat = position.coords.latitude
+          let lon = position.coords.longitude
+          if (idtruck) {
+            this.api.get("table/latlon", { params: { limit: 1, filter: "id_truck='" + idtruck + "' AND status = 'OPEN'", sort: "datetime" + " DESC " } })
+              .subscribe(val => {
+                let data = val['data']
+                if (data.length > 0) {
+                  if (data[0].latitude.substring(0, 8) == lat.toString().substring(0, 8) && data[0].longitude.substring(0, 9) == lon.toString().substring(0, 9)) {
+                  }
+                  else {
+                    this.doInsert(lat, lon, idtruck)
+                  }
+                }
+                else {
+                  this.doInsert(lat, lon, idtruck)
+                }
+              });
+          }
+        });
+      } else {
+        alert("Geolocation is not supported by this browser.")
+      }
+    });
+    this.truck = this.navParams.get('truck')
+    setInterval(() => {
+      this.storage.get('idtruck').then((val) => {
+        this.idtruck = val;
+      });
+      this.storage.get('notruck').then((val) => {
+        this.notruck = val;
+        this.truck = this.notruck
+      });
+    }, 1000);
+    if (navigator.geolocation) {
+      this.interval = navigator.geolocation.watchPosition((position) => {
+        let idtruck = this.idtruck
+        let lat = position.coords.latitude
+        let lon = position.coords.longitude
+        if (idtruck) {
+          this.api.get("table/latlon", { params: { limit: 1, filter: "id_truck='" + idtruck + "' AND status = 'OPEN'", sort: "datetime" + " DESC " } })
+            .subscribe(val => {
+              let data = val['data']
+              if (data.length > 0) {
+                if (data[0].latitude.substring(0, 8) == lat.toString().substring(0, 8) && data[0].longitude.substring(0, 9) == lon.toString().substring(0, 9)) {
+                }
+                else {
+                  this.doInsert(lat, lon, idtruck)
+                }
+              }
+              else {
+                this.doInsert(lat, lon, idtruck)
+              }
+            });
+        }
+      });
+    } else {
+      alert("Geolocation is not supported by this browser.")
+    }
+    this.myForm = fb.group({
+      userid: [''],
+      password: ['']
+    })
+    this.loading = this.loadingCtrl.create({
+      content: 'Please wait...'
+    });
+    this.loading.present().then(() => {
+      this.loading.dismiss()
+    });
+
+  }
+  doInsert(lat, lon, idtruck) {
+    this.api.get('nextno/latlon/id')
+      .subscribe(val => {
+        let nextno = val['nextno'];
+        const headers = new HttpHeaders()
+          .set("Content-Type", "application/json");
+        this.api.post("table/latlon",
+          {
+            "id": nextno,
+            "id_truck": idtruck,
+            "latitude": lat.toString().substring(0, 7),
+            "longitude": lon.toString().substring(0, 8),
+            "datetime": moment().format('YYYY-MM-DD HH:mm:ss'),
+            "devices": 'MOBILE',
+            "status": 'OPEN'
+          },
+          { headers })
+          .subscribe(
+            (val) => {
+            });
+      }, err => {
+        console.log('')
+      });
+  }
+  doLogoutTruck() {
+    let alert = this.alertCtrl.create({
+      title: 'Confirm Logout',
+      inputs: [
+        {
+          name: 'password',
+          placeholder: 'Password'
+        }
+      ],
+      buttons: [
+        {
+          text: 'Cancel',
+          role: 'cancel',
+          handler: data => {
+            console.log('Cancel clicked');
+          }
+        },
+        {
+          text: 'Logout',
+          handler: data => {
+            if (data.password == 'atriapassword') {
+              this.storage.clear()
+              navigator.geolocation.clearWatch(this.interval);
+              this.app.getRootNav().setRoot('LogintrukPage')
+              console.log('out')
+            }
+          }
+        }
+      ]
+    });
+    alert.present();
+  }
+  doLogin() {
+    const headers = new HttpHeaders()
+      .set("Content-Type", "application/json");
+    this.api.post("token",
+      {
+        "userid": this.myForm.value.userid,
+        "password": this.myForm.value.password
+      },
+      { headers })
+      .subscribe((val) => {
+        this.token = val['token'];
+        let notruck = this.notruck.replace(/\s/g, '')
+        this.doGetKirim(notruck)
+        /*this.api.get("tablenav", { params: { limit: 30, table: "t_registrasitruk", filter: "Status=1 AND IdTruk='" + this.idtruck + "' AND TglPengiriman='" + moment().format('YYYY-MM-DD') + "'" } })
+          .subscribe(val => {
+            this.pengiriman = val['data']
+            console.log(this.pengiriman)
+            clearInterval(this.interval)
+            this.app.getRootNav().setRoot('DetailpengirimanPage', {
+              noregistrasitruck: this.pengiriman[0].NoRegistrasiTruk,
+              notruk: this.notruck,
+              idtruk: this.pengiriman[0].IdTruk,
+              book: this.pengiriman,
+              userid: this.myForm.value.userid
+            })
+          });*/
+      }, err => {
+        let alert = this.alertCtrl.create({
+          subTitle: 'Password salah',
+          buttons: ['OK']
+        });
+        alert.present();
+        this.myForm.get('password').setValue('')
+      });
+  }
+  doGetKirim(notruck) {
+    this.api.get("table/slot_delivery", { params: { limit: 100, filter: "plat_no='" + notruck + "' AND date_delivery=" + "'" + moment().format('YYYY-MM-DD') + "'", sort: 'no_urut_group ASC' } })
+      .subscribe(val => {
+        let data = val['data']
+        navigator.geolocation.clearWatch(this.interval);
+        this.api.get("table/slot_delivery", { params: { limit: 100, filter: "plat_no='" + notruck + "' AND date_delivery=" + "'" + moment().format('YYYY-MM-DD') + "' AND (status !='OPEN' AND status !='PENDING' AND status !='CLSD')", sort: 'no_urut_group ASC' } })
+          .subscribe(val => {
+            let status = val['data']
+            if (status.length != 0) {
+              this.app.getRootNav().setRoot('MapsPage', {
+                userid: this.myForm.value.userid,
+                notruk: this.notruck,
+                idtruk: this.idtruck,
+                kirim: status[0],
+                datakirim: data
+              });
+            }
+            else {
+              this.app.getRootNav().setRoot('DetailpengirimanPage', {
+                notruk: this.notruck,
+                idtruk: this.idtruck,
+                userid: this.myForm.value.userid,
+                data: data
+              })
+            }
+          });
+      });
+  }
+}
